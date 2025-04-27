@@ -5,10 +5,11 @@ provider "azurerm" {
 terraform {
   required_providers {
     azuread = {
-      source = "hashicorp/azuread"
+      source  = "hashicorp/azuread"
     }
   }
 }
+
 
 provider "azuread" {
   tenant_id = "fbc822d7-87fc-4802-ba1e-05dd03030c31"
@@ -31,6 +32,7 @@ module "network" {
   depends_on = [azurerm_resource_group.rg]
 }
 
+# Subnet Resource (Delegated Private Subnet)
 resource "azurerm_subnet" "delegated_private_subnet" {
   name                 = "private-subnet-7a8c74a4"
   resource_group_name  = azurerm_resource_group.rg.name
@@ -40,6 +42,7 @@ resource "azurerm_subnet" "delegated_private_subnet" {
   depends_on = [module.network]
 }
 
+# Container Registry
 resource "azurerm_container_registry" "acr" {
   name                = "pwsacr7a8c74a4"
   resource_group_name = azurerm_resource_group.rg.name
@@ -52,15 +55,18 @@ output "acr_login_server" {
   value = azurerm_container_registry.acr.login_server
 }
 
+
 data "azuread_service_principal" "githubactionsp" {
   display_name = "githubactionsp"
 }
+
 
 resource "azurerm_role_assignment" "acr_push_access" {
   principal_id         = data.azuread_service_principal.githubactionsp.object_id
   role_definition_name = "AcrPush"
   scope                = azurerm_container_registry.acr.id
 }
+
 
 resource "azurerm_kubernetes_cluster" "aks_cluster" {
   name                = "aks-cluster"
@@ -69,34 +75,38 @@ resource "azurerm_kubernetes_cluster" "aks_cluster" {
   dns_prefix          = "aks-cluster"
 
   default_node_pool {
-    name                  = "default"
-    vm_size               = "Standard_DS2_v2"
-    node_count            = 2
-    vnet_subnet_id        = azurerm_subnet.delegated_private_subnet.id
-  }
-
-  network_profile {
-    network_plugin    = "azure"
-    load_balancer_sku = "standard"
-    network_policy    = "azure"
+    name       = "default"
+    node_count = 2
+    vm_size    = "Standard_DS2_v2"
   }
 
   identity {
     type = "SystemAssigned"
   }
-
-  depends_on = [azurerm_subnet.delegated_private_subnet]
 }
 
-provider "kubernetes" {
-  host                   = azurerm_kubernetes_cluster.aks_cluster.kube_config.0.host
-  cluster_ca_certificate = base64decode(azurerm_kubernetes_cluster.aks_cluster.kube_config.0.cluster_ca_certificate)
-  client_certificate     = base64decode(azurerm_kubernetes_cluster.aks_cluster.kube_config.0.client_certificate)
-  client_key             = base64decode(azurerm_kubernetes_cluster.aks_cluster.kube_config.0.client_key)
-
-  # Make sure provider waits for cluster
-  depends_on = [azurerm_kubernetes_cluster.aks_cluster]
+resource "azurerm_kubernetes_cluster_node_pool" "aks_node_pool" {
+  name                  = "default"
+  kubernetes_cluster_id = azurerm_kubernetes_cluster.aks_cluster.id
+  node_count            = 2
+  vm_size               = "Standard_DS2_v2"
+  enable_auto_scaling   = true
+  min_count             = 1
+  max_count             = 2
+  mode                  = "System"
 }
+
+# output "kube_config" {
+#   value = azurerm_kubernetes_cluster.aks_cluster.kube_config.0.raw_kube_config
+# }
+
+# provider "kubernetes" {
+#   host                   = azurerm_kubernetes_cluster.aks_cluster.kube_admin_config.0.host
+#   cluster_ca_certificate = base64decode(azurerm_kubernetes_cluster.aks_cluster.kube_admin_config.0.cluster_ca_certificate)
+#   client_certificate     = base64decode(azurerm_kubernetes_cluster.aks_cluster.kube_admin_config.0.client_certificate)
+#   client_key             = base64decode(azurerm_kubernetes_cluster.aks_cluster.kube_admin_config.0.client_key)
+
+# }
 
 resource "kubernetes_deployment" "web_app_deployment" {
   metadata {
@@ -125,7 +135,7 @@ resource "kubernetes_deployment" "web_app_deployment" {
           name  = "myapp"
           image = "pwsacr7a8c74a4.azurecr.io/myapp:latest"
           port {
-            container_port = 5000
+            container_port = 5000   # <-- Change this to 5000
           }
         }
       }
@@ -145,15 +155,10 @@ resource "kubernetes_service" "flask_crud_service" {
     }
 
     port {
-      port        = 80          # External Port
-      target_port = 5000         # Container Port
+      port        = 80          # Expose it to users on 80 (browser friendly)
+      target_port = 5000        # <-- Forward traffic to container's 5000 port
     }
 
     type = "LoadBalancer"
   }
-}
-
-output "web_app_url" {
-  value = "http://${kubernetes_service.flask_crud_service.status.0.load_balancer.0.ingress.0.ip}"
-  description = "Access your web app using this URL."
 }
