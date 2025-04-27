@@ -123,7 +123,7 @@ resource "kubernetes_deployment" "web_app_deployment" {
       spec {
         container {
           name  = "myapp"
-          image = "${azurerm_container_registry.acr.login_server }/myapp:latest"
+          image = "pwsacr7a8c74a4.azurecr.io/myapp:latest"
           port {
             container_port = 5000
           }
