@@ -1,0 +1,40 @@
+name: Build and Zip Docker Image
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-zip:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Build Docker image
+        run: docker build -f ./code/DOCKERFILE -t flask-crud-app ./ 
+
+      # - name: Save Docker image as tar
+      #   run: docker save flask-crud-app -o flask-crud-app.tar
+
+      # - name: Zip the image tarball
+      #   run: zip flask-crud-app.zip flask-crud-app.tar
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{secrets.AZURE_CREDENTIALS}}
+
+      - name: Log in to ACR
+        run: |
+          az acr login --name <your-acr-name>
+
+      - name: Tag Docker image for ACR
+        run: |
+          docker tag flask-crud-app <your-acr-name>.azurecr.io/flask-crud-app:latest
+
+      - name: Push Docker image to ACR
+        run: |
+          docker push <your-acr-name>.azurecr.io/flask-crud-app:latest
