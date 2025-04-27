@@ -1,3 +1,4 @@
+
 provider "azurerm" {
   features {}
 }
@@ -32,15 +33,15 @@ module "network" {
   depends_on = [azurerm_resource_group.rg]
 }
 
-# Subnet Resource (Delegated Private Subnet)
-resource "azurerm_subnet" "delegated_private_subnet" {
-  name                 = "private-subnet-7a8c74a4"
-  resource_group_name  = azurerm_resource_group.rg.name
-  virtual_network_name = module.network.vnet_name
-  address_prefixes     = ["10.0.2.0/24"]
+# # Subnet Resource (Delegated Private Subnet)
+# resource "azurerm_subnet" "delegated_private_subnet" {
+#   name                 = "private-subnet-7a8c74a4"
+#   resource_group_name  = azurerm_resource_group.rg.name
+#   virtual_network_name = module.network.vnet_name
+#   address_prefixes     = ["10.0.2.0/24"]
 
-  depends_on = [module.network]
-}
+#   depends_on = [module.network]
+# }
 
 # Container Registry
 resource "azurerm_container_registry" "acr" {
@@ -67,51 +68,56 @@ resource "azurerm_role_assignment" "acr_push_access" {
   scope                = azurerm_container_registry.acr.id
 }
 
-
-resource "azurerm_kubernetes_cluster" "aks_cluster" {
-  name                = "aks-cluster"
+resource "azurerm_kubernetes_cluster" "aks" {
+  name                = "aks-poc-cluster"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
-  dns_prefix          = "aks-cluster"
+  dns_prefix          = "akspoc"
+  node_resource_group = "aks-nodes-rg"
 
   default_node_pool {
-    name       = "default"
-    node_count = 2
-    vm_size    = "Standard_DS2_v2"
+    name           = "default"
+    node_count     = 1
+    vm_size        = "Standard_B2s"
+    vnet_subnet_id = module.network.vnet_subnets[1]
   }
 
   identity {
     type = "SystemAssigned"
   }
+
+  network_profile {
+    network_plugin = "azure"
+    service_cidr   = "10.10.0.0/16"
+    dns_service_ip = "10.10.0.10"
+  }
+
+  depends_on = [
+    azurerm_container_registry.acr,
+    module.network
+  ]
 }
 
-resource "azurerm_kubernetes_cluster_node_pool" "aks_node_pool" {
-  name                  = "default"
-  kubernetes_cluster_id = azurerm_kubernetes_cluster.aks_cluster.id
-  node_count            = 2
-  vm_size               = "Standard_DS2_v2"
-  enable_auto_scaling   = true
-  min_count             = 1
-  max_count             = 2
-  mode                  = "System"
+resource "azurerm_role_assignment" "aks_acr_pull" {
+  principal_id         = azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id
+  role_definition_name = "AcrPull"
+  scope                = azurerm_container_registry.acr.id
 }
 
-# output "kube_config" {
-#   value = azurerm_kubernetes_cluster.aks_cluster.kube_config.0.raw_kube_config
-# }
+provider "kubernetes" {
+  host                   = azurerm_kubernetes_cluster.aks.kube_config.0.host
+  client_certificate     = base64decode(azurerm_kubernetes_cluster.aks.kube_config.0.client_certificate)
+  client_key             = base64decode(azurerm_kubernetes_cluster.aks.kube_config.0.client_key)
+  cluster_ca_certificate = base64decode(azurerm_kubernetes_cluster.aks.kube_config.0.cluster_ca_certificate)
+}
 
-# provider "kubernetes" {
-#   host                   = azurerm_kubernetes_cluster.aks_cluster.kube_admin_config.0.host
-#   cluster_ca_certificate = base64decode(azurerm_kubernetes_cluster.aks_cluster.kube_admin_config.0.cluster_ca_certificate)
-#   client_certificate     = base64decode(azurerm_kubernetes_cluster.aks_cluster.kube_admin_config.0.client_certificate)
-#   client_key             = base64decode(azurerm_kubernetes_cluster.aks_cluster.kube_admin_config.0.client_key)
 
-# }
-
-resource "kubernetes_deployment" "web_app_deployment" {
+resource "kubernetes_deployment" "myapp" {
   metadata {
-    name      = "myapp"
-    namespace = "default"
+    name = "myapp-deployment"
+    labels = {
+      app = "myapp"
+    }
   }
 
   spec {
@@ -133,20 +139,23 @@ resource "kubernetes_deployment" "web_app_deployment" {
       spec {
         container {
           name  = "myapp"
-          image = "pwsacr7a8c74a4.azurecr.io/myapp:latest"
+          image = "${azurerm_container_registry.acr.login_server}/myapp:latest"
           port {
-            container_port = 5000   # <-- Change this to 5000
+            container_port = 5000
           }
         }
       }
     }
   }
+
+  depends_on = [
+    azurerm_kubernetes_cluster.aks
+  ]
 }
 
-resource "kubernetes_service" "flask_crud_service" {
+resource "kubernetes_service" "myapp" {
   metadata {
-    name      = "flask-crud-service"
-    namespace = "default"
+    name = "myapp-service"
   }
 
   spec {
@@ -155,10 +164,19 @@ resource "kubernetes_service" "flask_crud_service" {
     }
 
     port {
-      port        = 80          # Expose it to users on 80 (browser friendly)
-      target_port = 5000        # <-- Forward traffic to container's 5000 port
+      port        = 80
+      target_port = 5000
     }
 
     type = "LoadBalancer"
   }
+}
+
+output "kube_config" {
+  value     = azurerm_kubernetes_cluster.aks.kube_config_raw
+  sensitive = true
+}
+
+output "loadbalancer_ip" {
+  value = kubernetes_service.myapp.status.0.load_balancer.0.ingress.0.ip
 }
