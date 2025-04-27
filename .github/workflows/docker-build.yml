@@ -14,9 +14,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Build Docker image
-        run: docker build -f ./code/DOCKERFILE -t flask-crud-app ./ 
-
       # Optional: Save Docker image as tar (uncomment if needed)
       # - name: Save Docker image as tar
       #   run: docker save flask-crud-app -o flask-crud-app.tar
@@ -40,5 +37,5 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
-          docker build -t ${{secrets.ACR_NAME}}/myapp:latest .  # Replace myapp with your image name
+          docker build -t ${{secrets.ACR_NAME}}/myapp:latest -f ./code/Dockerfile ./  # Replace myapp with your image name
           docker push ${{secrets.ACR_NAME}}/myapp:latest  # Push the image to ACR
