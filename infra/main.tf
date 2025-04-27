@@ -66,3 +66,93 @@ resource "azurerm_role_assignment" "acr_push_access" {
   role_definition_name = "AcrPush"
   scope                = azurerm_container_registry.acr.id
 }
+
+
+resource "azurerm_kubernetes_cluster" "aks_cluster" {
+  name                = "aks-cluster"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  dns_prefix          = "aks-cluster"
+
+  default_node_pool {
+    name       = "default"
+    node_count = 2
+    vm_size    = "Standard_DS2_v2"
+  }
+
+  identity {
+    type = "SystemAssigned"
+  }
+}
+
+resource "azurerm_kubernetes_cluster_node_pool" "aks_node_pool" {
+  name                  = "default"
+  kubernetes_cluster_id = azurerm_kubernetes_cluster.aks_cluster.id
+  node_count            = 2
+  vm_size               = "Standard_DS2_v2"
+  enable_auto_scaling   = true
+  min_count             = 1
+  max_count             = 3
+}
+
+provider "kubernetes" {
+  host                   = azurerm_kubernetes_cluster.aks_cluster.kube_config.0.host
+  cluster_ca_certificate = base64decode(azurerm_kubernetes_cluster.aks_cluster.kube_config.0.cluster_ca_certificate)
+  client_certificate     = base64decode(azurerm_kubernetes_cluster.aks_cluster.kube_config.0.client_certificate)
+  client_key             = base64decode(azurerm_kubernetes_cluster.aks_cluster.kube_config.0.client_key)
+}
+
+resource "kubernetes_deployment" "web_app_deployment" {
+  metadata {
+    name      = "myapp"
+    namespace = "default"
+  }
+
+  spec {
+    replicas = 2
+
+    selector {
+      match_labels = {
+        app = "myapp"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = "myapp"
+        }
+      }
+
+      spec {
+        container {
+          name  = "myapp"
+          image = "pwsacr7a8c74a4.azurecr.io/myapp:latest"
+          port {
+            container_port = 80
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_service" "flask_crud_service" {
+  metadata {
+    name      = "flask-crud-service"
+    namespace = "default"
+  }
+
+  spec {
+    selector = {
+      app = "myapp"
+    }
+
+    port {
+      port        = 80
+      target_port = 80
+    }
+
+    type = "LoadBalancer"
+  }
+}
