@@ -101,7 +101,6 @@ provider "kubernetes" {
   client_certificate     = base64decode(azurerm_kubernetes_cluster.aks_cluster.kube_config.0.client_certificate)
   client_key             = base64decode(azurerm_kubernetes_cluster.aks_cluster.kube_config.0.client_key)
 }
-
 resource "kubernetes_deployment" "web_app_deployment" {
   metadata {
     name      = "myapp"
@@ -129,7 +128,7 @@ resource "kubernetes_deployment" "web_app_deployment" {
           name  = "myapp"
           image = "pwsacr7a8c74a4.azurecr.io/myapp:latest"
           port {
-            container_port = 80
+            container_port = 5000   # <-- Change this to 5000
           }
         }
       }
@@ -149,8 +148,8 @@ resource "kubernetes_service" "flask_crud_service" {
     }
 
     port {
-      port        = 80
-      target_port = 80
+      port        = 80          # Expose it to users on 80 (browser friendly)
+      target_port = 5000        # <-- Forward traffic to container's 5000 port
     }
 
     type = "LoadBalancer"
