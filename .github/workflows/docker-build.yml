@@ -1,16 +1,17 @@
-name: Build and Zip Docker Image
+name: Publish Docker Image to ACR
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:
+    branches:
+      - main  # Trigger the workflow on push to the main branch
 
 jobs:
-  build-and-zip:
-    runs-on: ubuntu-latest
+  build_and_push:
+    runs-on: ubuntu-latest  # Run the workflow on an Ubuntu runner
 
     steps:
-      - name: Checkout code
+      # 1. Checkout the code from the repository
+      - name: Checkout Code
         uses: actions/checkout@v3
 
       - name: Build Docker image
@@ -25,18 +26,21 @@ jobs:
       #   run: zip flask-crud-app.zip flask-crud-app.tar
 
       - name: Log in to Azure
-        uses: azure/login@v2
+        uses: azure/login@v1
         with:
-          creds: ${{secrets.AZURE_CREDENTIALS}}
+          client-id: ${{secrets.AZURE_CLIENT_ID}}
+          client-secret: ${{secrets.AZURE_CLIENT_SECRET}}
+          tenant-id: ${{secrets.AZURE_TENANT_ID}}
+          subscription-id: ${{secrets.AZURE_SUBSCRIPTION_ID}}
 
       - name: Log in to ACR
-        run: |
-          az acr login --name ${{secrets.ACR_NAME}}
+        uses: docker/login-action@v2
+        with:
+          registry: ${{secrets.ACR_NAME}} # ACR registry URL
+          username: ${{secrets.AZURE_CLIENT_ID}}    # Using service principal as username
+          password: ${{secrets.AZURE_CLIENT_SECRET}} # Using service principal secret
 
-      - name: Tag Docker image for ACR
+      - name: Build and Push Docker Image
         run: |
-          docker tag flask-crud-app ${{secrets.ACR_NAME}}.azurecr.io/flask-crud-app:latest
-
-      - name: Push Docker image to ACR
-        run: |
-          docker push ${{secrets.ACR_NAME}}.azurecr.io/flask-crud-app:latest
+          docker build -t ${{secrets.ACR_NAME}}/myapp:latest .  # Replace myapp with your image name
+          docker push ${{secrets.ACR_NAME}}/myapp:latest  # Push the image to ACR
