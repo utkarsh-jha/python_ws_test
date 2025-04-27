@@ -16,9 +16,11 @@ jobs:
       - name: Build Docker image
         run: docker build -f ./code/DOCKERFILE -t flask-crud-app ./ 
 
+      # Optional: Save Docker image as tar (uncomment if needed)
       # - name: Save Docker image as tar
       #   run: docker save flask-crud-app -o flask-crud-app.tar
 
+      # Optional: Zip the image tarball (uncomment if needed)
       # - name: Zip the image tarball
       #   run: zip flask-crud-app.zip flask-crud-app.tar
 
@@ -29,12 +31,12 @@ jobs:
 
       - name: Log in to ACR
         run: |
-          az acr login --name <your-acr-name>
+          az acr login --name ${{secrets.ACR_NAME}}
 
       - name: Tag Docker image for ACR
         run: |
-          docker tag flask-crud-app <your-acr-name>.azurecr.io/flask-crud-app:latest
+          docker tag flask-crud-app ${{secrets.ACR_NAME}}.azurecr.io/flask-crud-app:latest
 
       - name: Push Docker image to ACR
         run: |
-          docker push <your-acr-name>.azurecr.io/flask-crud-app:latest
+          docker push ${{secrets.ACR_NAME}}.azurecr.io/flask-crud-app:latest
