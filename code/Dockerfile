@@ -3,22 +3,14 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-
-
-WORKDIR /app
-
-COPY code/requirements.txt .
-
-RUN pip install --no-cache-dir -r requirements.txt
-
-WORKDIR /
+WORKDIR /code
 
 COPY . .
+
+RUN pip install --no-cache-dir -r requirements.txt
 
 ENV STORAGE_TYPE=file
 
 EXPOSE 5000
-
-WORKDIR /
 
 CMD ["python", "run.py"]
