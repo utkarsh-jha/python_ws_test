@@ -38,5 +38,5 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
-          docker build -t ${{secrets.ACR_NAME}}/myapp:latest -f ./code/Dockerfile ./  # Replace myapp with your image name
+          docker build -t ${{secrets.ACR_NAME}}/myapp:latest -f ./code/Dockerfile ./code
           docker push ${{secrets.ACR_NAME}}/myapp:latest  # Push the image to ACR
